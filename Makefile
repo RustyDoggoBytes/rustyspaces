@@ -15,6 +15,8 @@ run: build
 	./$(BUILD_DIR)/$(APP_NAME)
 
 install: build
+	@echo "Removing existing installation..."
+	@rm -rf $(INSTALLED_APP)
 	@echo "Creating app bundle..."
 	@mkdir -p $(APP_BUNDLE)/Contents/MacOS
 	@cp $(BUILD_DIR)/$(APP_NAME) $(APP_BUNDLE)/Contents/MacOS/

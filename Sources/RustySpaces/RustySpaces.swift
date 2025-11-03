@@ -46,13 +46,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func getSpaceFromYabai() -> Int? {
+        // Try to get yabai and jq paths from common locations
+        let yabaiPaths = ["/opt/homebrew/bin/yabai", "/usr/local/bin/yabai"]
+        let jqPaths = ["/usr/bin/jq", "/opt/homebrew/bin/jq", "/usr/local/bin/jq"]
+
+        guard let yabaiPath = yabaiPaths.first(where: { FileManager.default.fileExists(atPath: $0) }),
+              let jqPath = jqPaths.first(where: { FileManager.default.fileExists(atPath: $0) }) else {
+            return nil
+        }
+
         let task = Process()
         task.launchPath = "/bin/sh"
-        task.arguments = ["-c", "yabai -m query --spaces --display | jq '.[] | select(.\"is-visible\" == true) | .index'"]
+        task.arguments = ["-c", "\(yabaiPath) -m query --spaces --display | \(jqPath) '.[] | select(.\"is-visible\" == true) | .index'"]
 
         let pipe = Pipe()
         task.standardOutput = pipe
-        task.standardError = Pipe()
+        let errorPipe = Pipe()
+        task.standardError = errorPipe
 
         do {
             try task.run()
@@ -64,8 +74,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                let spaceNumber = Int(output) {
                 return spaceNumber
             }
+
+            // Debug: Log errors
+            let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+            if !errorData.isEmpty {
+                if let errorString = String(data: errorData, encoding: .utf8) {
+                    print("yabai error: \(errorString)")
+                }
+            }
         } catch {
-            // Silently fail, will use AppleScript fallback
+            print("yabai process error: \(error)")
         }
 
         return nil
