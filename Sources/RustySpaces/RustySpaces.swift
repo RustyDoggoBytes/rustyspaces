@@ -36,21 +36,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func getCurrentSpace() -> Int {
-        let script = """
-        tell application "System Events"
-            set spacesList to (spaces of desktop 1)
-            repeat with i from 1 to count of spacesList
-                set spaceNum to item i of spacesList
-                if (is visible of spaceNum) then
-                    return i
-                end if
-            end repeat
-        end tell
-        """
+        // Try yabai first (most reliable)
+        if let spaceFromYabai = getSpaceFromYabai() {
+            return spaceFromYabai
+        }
 
+        // Fallback to AppleScript
+        return getSpaceFromAppleScript()
+    }
+
+    func getSpaceFromYabai() -> Int? {
         let task = Process()
-        task.launchPath = "/usr/bin/osascript"
-        task.arguments = ["-e", script]
+        task.launchPath = "/bin/sh"
+        task.arguments = ["-c", "yabai -m query --spaces --display | jq '.[] | select(.\"is-visible\" == true) | .index'"]
 
         let pipe = Pipe()
         task.standardOutput = pipe
@@ -62,11 +60,53 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
             let data = pipe.fileHandleForReading.readDataToEndOfFile()
             if let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !output.isEmpty,
                let spaceNumber = Int(output) {
                 return spaceNumber
             }
         } catch {
-            print("Error executing AppleScript: \(error)")
+            // Silently fail, will use AppleScript fallback
+        }
+
+        return nil
+    }
+
+    func getSpaceFromAppleScript() -> Int {
+        let script = """
+        tell application "System Events"
+            set visibleSpace to 0
+            set desktopSpaces to spaces of desktop 1
+            repeat with spaceIndex from 1 to count of desktopSpaces
+                set theSpace to item spaceIndex of desktopSpaces
+                if visible of theSpace then
+                    set visibleSpace to spaceIndex
+                end if
+            end repeat
+            return visibleSpace
+        end tell
+        """
+
+        let task = Process()
+        task.launchPath = "/usr/bin/osascript"
+        task.arguments = ["-e", script]
+
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        let errorPipe = Pipe()
+        task.standardError = errorPipe
+
+        do {
+            try task.run()
+            task.waitUntilExit()
+
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            if let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !output.isEmpty,
+               let spaceNumber = Int(output) {
+                return spaceNumber
+            }
+        } catch {
+            // Silently fail
         }
 
         return 1
